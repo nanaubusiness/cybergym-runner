@@ -39,7 +39,7 @@ def gh_api(method: str, path: str, **kwargs) -> dict:
                 cmd.extend(["--input", f.name])
                 body_file_path = f.name
             try:
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
                 os.unlink(body_file_path)
             except Exception:
                 os.unlink(body_file_path)
@@ -50,7 +50,7 @@ def gh_api(method: str, path: str, **kwargs) -> dict:
         else:
             cmd.extend(["--input", body])
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if result.returncode != 0:
         raise RuntimeError(f"gh api {method} {path} failed: {result.stderr}")
     try:
@@ -87,7 +87,7 @@ def trigger_workflow(repo: str, workflow_id: int, task_id: str) -> bool:
              f"/repos/{repo}/actions/workflows/{workflow_id}/dispatches",
              "--header", "X-GitHub-Api-Version:2022-11-28",
              "--input", tmp],
-            capture_output=True, text=True, timeout=30
+            capture_output=True, text=True, timeout=120
         )
         os.unlink(tmp)
     except Exception as e:
@@ -113,7 +113,7 @@ def trigger_workflow(repo: str, workflow_id: int, task_id: str) -> bool:
                  f"/repos/{repo}/actions/workflows/{workflow_id}/dispatches",
                  "--header", "X-GitHub-Api-Version:2022-11-28",
                  "--input", tmp],
-                capture_output=True, text=True, timeout=30
+                capture_output=True, text=True, timeout=120
             )
             os.unlink(tmp)
         except Exception:
