@@ -70,9 +70,10 @@ def get_workflow_id(repo: str) -> int:
 
 def trigger_workflow(repo: str, workflow_id: int, task_id: str) -> bool:
     """Trigger workflow_dispatch for a single task via gh api. Returns True on success."""
+    # workflow_dispatch inputs: simple key->value map (strings only)
     payload = {
         "ref": "main",
-        "inputs": {"task_id": {"value": task_id}},
+        "inputs": {"task_id": task_id},
     }
     import tempfile
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
