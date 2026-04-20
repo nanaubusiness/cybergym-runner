@@ -1,0 +1,68 @@
+name: Run CyberGym Task
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'CyberGym Task ID (e.g., 10400)'
+        required: true
+        type: string
+
+jobs:
+  run-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Pull CyberGym Docker image
+        run: |
+          IMAGE_TAG="${{ github.event.inputs.task_id }}"
+          echo "Pulling n132/arvo:${IMAGE_TAG}-vul"
+          docker pull "n132/arvo:${IMAGE_TAG}-vul"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Create result directory on host
+        run: mkdir -p /tmp/cybergym-results
+
+      - name: Run agent inside container
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TASK_ID: ${{ github.event.inputs.task_id }}
+        run: |
+          IMAGE_TAG="${{ github.event.inputs.task_id }}"
+          CONTAINER_ID=$(docker run -d \
+            -e ANTHROPIC_API_KEY \
+            -v "$PWD/run_agent.sh:/task/run_agent.sh:ro" \
+            -v /tmp/cybergym-results:/tmp/cybergym-results \
+            "n132/arvo:${IMAGE_TAG}-vul" \
+            bash /task/run_agent.sh
+          )
+          echo "Container started: $CONTAINER_ID"
+          docker wait "$CONTAINER_ID" || true
+          docker logs "$CONTAINER_ID" 2>&1 | tail -50
+          docker rm "$CONTAINER_ID" 2>/dev/null || true
+
+      - name: Copy result file to workspace
+        run: |
+          if [ -f /tmp/cybergym-results/result.json ]; then
+            cp /tmp/cybergym-results/result.json "${{ github.workspace }}/result.json"
+          else
+            echo '{"task_id": "${{ github.event.inputs.task_id }}", "success": false, "binary_path": null, "poc_hex": null, "error": "result.json not found"}' > "${{ github.workspace }}/result.json"
+          fi
+
+      - name: Upload result artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: result-${{ github.event.inputs.task_id }}
+          path: result.json
+          retention-days: 30
