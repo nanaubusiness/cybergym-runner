@@ -2,39 +2,125 @@
 """
 Dispatch all CyberGym tasks to GitHub Actions workflows.
 Downloads the task list from HuggingFace, then triggers workflow_dispatch
-for each task via the GitHub API. Supports resume via dispatched.json.
+for each task via the GitHub API (using `gh api` to avoid SSL issues).
+Supports resume via dispatched.json.
 """
 
 import json
 import os
+import subprocess
 import sys
 import time
-import requests
 from pathlib import Path
 
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "nanaubusiness/cybergym-runner")
 DISPATCH_FILE = Path("dispatched.json")
-WORKFLOW_ID = "run_task.yml"  # filename of the workflow
-
-SESSION = requests.Session()
-SESSION.headers["Accept"] = "application/vnd.github+json"
-SESSION.headers["X-GitHub-Api-Version"] = "2022-11-28"
-if GITHUB_TOKEN:
-    SESSION.headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+WORKFLOW_FILE = "run_task.yml"
 
 
-def get_workflow_id(repo: str) -> str:
-    """Get the workflow ID (run_id) from the workflow filename."""
-    url = f"https://api.github.com/repos/{repo}/actions/workflows"
-    resp = SESSION.get(url)
-    resp.raise_for_status()
-    workflows = resp.json().get("workflows", [])
-    for wf in workflows:
-        if wf["path"] == f".github/workflows/{WORKFLOW_ID}":
+def gh_api(method: str, path: str, **kwargs) -> dict:
+    """Call `gh api` with given method and path. Returns parsed JSON."""
+    cmd = ["gh", "api", "--header", "X-GitHub-Api-Version:2022-11-28", path]
+    if method != "GET":
+        cmd.insert(2, "--method")
+        cmd.insert(3, method)
+
+    # Handle request body for POST
+    body = kwargs.get("body")
+    if body:
+        body_file = kwargs.get("body_file")
+        if body_file:
+            cmd.extend(["--input", body_file])
+        elif isinstance(body, dict):
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+                json.dump(body, f)
+                f.flush()
+                cmd.extend(["--input", f.name])
+                body_file_path = f.name
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                os.unlink(body_file_path)
+            except Exception:
+                os.unlink(body_file_path)
+                raise
+            if result.returncode != 0:
+                raise RuntimeError(f"gh api failed: {result.stderr}")
+            return json.loads(result.stdout) if result.stdout.strip() else {}
+        else:
+            cmd.extend(["--input", body])
+
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    if result.returncode != 0:
+        raise RuntimeError(f"gh api {method} {path} failed: {result.stderr}")
+    try:
+        return json.loads(result.stdout) if result.stdout.strip() else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def get_workflow_id(repo: str) -> int:
+    """Get the workflow numeric ID from the workflow filename."""
+    data = gh_api("GET", f"/repos/{repo}/actions/workflows")
+    for wf in data.get("workflows", []):
+        if wf["path"] == f".github/workflows/{WORKFLOW_FILE}":
             return wf["id"]
-    # Fallback: return the filename as ID string (GitHub accepts either)
-    return WORKFLOW_ID
+    raise RuntimeError(f"Workflow {WORKFLOW_FILE} not found in {repo}")
+
+
+def trigger_workflow(repo: str, workflow_id: int, task_id: str) -> bool:
+    """Trigger workflow_dispatch for a single task via gh api. Returns True on success."""
+    payload = {
+        "ref": "main",
+        "inputs": {"task_id": {"value": task_id}},
+    }
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(payload, f)
+        f.flush()
+        tmp = f.name
+
+    try:
+        result = subprocess.run(
+            ["gh", "api", "--method", "POST",
+             f"/repos/{repo}/actions/workflows/{workflow_id}/dispatches",
+             "--header", "X-GitHub-Api-Version:2022-11-28",
+             "--input", tmp],
+            capture_output=True, text=True, timeout=30
+        )
+        os.unlink(tmp)
+    except Exception as e:
+        os.unlink(tmp)
+        raise
+
+    if result.returncode == 204 or result.returncode == 0:
+        return True
+    stderr = result.stderr.lower()
+    if "rate limit" in stderr or result.returncode == 429:
+        # Extract retry-after if present
+        retry_match = result.stderr
+        print(f"  [RATE LIMITED] Will retry after delay")
+        time.sleep(60)
+        # Retry once
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(payload, f)
+            f.flush()
+            tmp = f.name
+        try:
+            result = subprocess.run(
+                ["gh", "api", "--method", "POST",
+                 f"/repos/{repo}/actions/workflows/{workflow_id}/dispatches",
+                 "--header", "X-GitHub-Api-Version:2022-11-28",
+                 "--input", tmp],
+                capture_output=True, text=True, timeout=30
+            )
+            os.unlink(tmp)
+        except Exception:
+            os.unlink(tmp)
+            raise
+        return result.returncode in (0, 204)
+    print(f"  [ERROR {result.returncode}] {result.stderr[:200]}")
+    return False
 
 
 def get_existing_dispatched() -> dict:
@@ -45,26 +131,6 @@ def get_existing_dispatched() -> dict:
 
 def save_progress(dispatched: dict):
     DISPATCH_FILE.write_text(json.dumps(dispatched, indent=2))
-
-
-def trigger_workflow(repo: str, workflow_id: str, task_id: str) -> bool:
-    """Trigger a workflow_dispatch for a single task. Returns True on success."""
-    url = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_id}/dispatches"
-    payload = {
-        "ref": "main",
-        "inputs": {"task_id": {"value": task_id}},
-    }
-    resp = SESSION.post(url, json=payload)
-    if resp.status_code == 204:
-        return True
-    if resp.status_code == 429:
-        # Rate limited — check Retry-After header
-        retry_after = resp.headers.get("Retry-After", "60")
-        print(f"  [RATE LIMITED] Sleeping {retry_after}s")
-        time.sleep(int(retry_after))
-        return trigger_workflow(repo, workflow_id, task_id)  # retry once
-    print(f"  [ERROR {resp.status_code}] {resp.text}")
-    return False
 
 
 def fetch_task_ids() -> list[str]:
@@ -90,21 +156,28 @@ def fetch_task_ids() -> list[str]:
 
 
 def main():
-    if not GITHUB_REPO or not GITHUB_TOKEN:
-        print("ERROR: GITHUB_REPO and GITHUB_TOKEN environment variables must be set")
-        print("  export GITHUB_REPO=owner/repo")
-        print("  export GITHUB_TOKEN=ghp_...")
+    repo = GITHUB_REPO
+    if not repo:
+        print("ERROR: GITHUB_REPO environment variable must be set")
         sys.exit(1)
 
-    workflow_id = get_workflow_id(GITHUB_REPO)
+    print(f"Repo: {repo}")
+    workflow_id = get_workflow_id(repo)
     print(f"Workflow ID: {workflow_id}")
 
     all_tasks = fetch_task_ids()
     dispatched = get_existing_dispatched()
 
-    already_done = set(dispatched.values()) if isinstance(dispatched, dict) else set()
+    # dispatched is dict: str(index) -> task_id string
+    # Build set of already-dispatched task_ids
+    already_done = set()
+    if isinstance(dispatched, dict):
+        for idx, tid in dispatched.items():
+            already_done.add(tid)
+    # Also skip ones already in-flight by checking recent workflow runs
     total = len(all_tasks)
     start = time.time()
+    dispatched_count = 0
 
     for i, task_id in enumerate(all_tasks):
         if task_id in already_done:
@@ -112,20 +185,22 @@ def main():
             continue
 
         print(f"[{i+1}/{total}] Dispatching {task_id}...", end=" ", flush=True)
-        ok = trigger_workflow(GITHUB_REPO, workflow_id, task_id)
+        ok = trigger_workflow(repo, workflow_id, task_id)
         if ok:
             dispatched[str(i)] = task_id
             save_progress(dispatched)
+            already_done.add(task_id)
+            dispatched_count += 1
             print("OK")
         else:
-            print(f"FAILED — stopping (will resume)")
+            print(f"FAILED — stopping (will resume on next run)")
             break
 
-        # 1 second delay to avoid hitting rate limits
+        # 1 second delay to avoid rate limits
         time.sleep(1)
 
     elapsed = time.time() - start
-    print(f"\nDone. Dispatched {len(dispatched)}/{total} tasks in {elapsed:.1f}s")
+    print(f"\nDone. Dispatched {dispatched_count}/{total} tasks in {elapsed:.1f}s")
     print(f"Progress saved to {DISPATCH_FILE}")
 
 
