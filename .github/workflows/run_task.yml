@@ -42,7 +42,7 @@ jobs:
           IMAGE_TAG="${{ github.event.inputs.task_id }}"
           CONTAINER_ID=$(docker run -d \
             -e ANTHROPIC_API_KEY \
-            -v "$PWD/run_agent.sh:/task/run_agent.sh:ro" \
+            -v "$PWD:/task:ro" \
             -v /tmp/cybergym-results:/tmp/cybergym-results \
             "n132/arvo:${IMAGE_TAG}-vul" \
             bash /task/run_agent.sh
