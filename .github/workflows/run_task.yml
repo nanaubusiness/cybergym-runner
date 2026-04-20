@@ -64,6 +64,7 @@ jobs:
       - name: Verify PoC and prepare result
         env:
           BINARY_PATH: ${{ steps.extract.outputs.BINARY_PATH }}
+          TASK_ID: ${{ github.event.inputs.task_id }}
         run: |
           POC_PATH="/tmp/poc"
           echo "=== Verification ==="
