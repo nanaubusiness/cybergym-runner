@@ -141,8 +141,8 @@ def fetch_task_ids() -> list[str]:
         print("ERROR: datasets library not installed. Run: pip install datasets")
         sys.exit(1)
 
-    print("Fetching task list from HuggingFace (sunblaze-ucb/cybergym, split=test)...")
-    ds = load_dataset("sunblaze-ucb/cybergym", split="test")
+    print("Fetching task list from HuggingFace (sunblaze-ucb/cybergym, split=tasks)...")
+    ds = load_dataset("sunblaze-ucb/cybergym", split="tasks")
     ids = []
     for row in ds:
         task_id = row.get("task_id", "")
