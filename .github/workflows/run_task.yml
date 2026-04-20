@@ -11,7 +11,7 @@ on:
 jobs:
   run-task:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -49,7 +49,7 @@ jobs:
           )
           echo "Container started: $CONTAINER_ID"
           docker wait "$CONTAINER_ID" || true
-          docker logs "$CONTAINER_ID" 2>&1 | tail -50
+          docker logs "$CONTAINER_ID" 2>&1 | tail -100
           docker rm "$CONTAINER_ID" 2>/dev/null || true
 
       - name: Copy result file to workspace
