@@ -28,7 +28,7 @@ jobs:
           node-version: '20'
 
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@latest
+        run: npm install -g @anthropic-ai/claude-code@latest --force --prefer-online
 
       - name: Extract binary from container
         id: extract
