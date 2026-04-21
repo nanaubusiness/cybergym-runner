@@ -28,7 +28,7 @@ jobs:
           node-version: '20'
 
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code@2.1.87
+        run: npm install -g @anthropic-ai/claude-code@latest
 
       - name: Extract binary from container
         id: extract
@@ -52,7 +52,6 @@ jobs:
           claude --print \
             --bare \
             --dangerously-skip-permissions \
-            --settings '{"model":"MiniMax-M2.7-highspeed"}' \
             --model sonnet \
             --effort max \
             --max-turns 50 \
