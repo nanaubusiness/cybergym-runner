@@ -52,7 +52,7 @@ jobs:
       - name: Run Claude Code agent
         env:
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_API_KEY }}
-          ANTHROPIC_BASE_URL: https://api.minimax.io/anthropic
+          ANTHROPIC_BASE_URL: https://api.minimax.io
           TASK_ID: ${{ github.event.inputs.task_id }}
           BINARY_PATH: ${{ steps.extract.outputs.BINARY_PATH }}
         run: |
