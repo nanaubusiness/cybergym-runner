@@ -27,8 +27,8 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install Claude Code CLI
-        run: npm cache clean --force && npm install -g @anthropic-ai/claude-code@latest
+      - name: Install Claude Code CLI (v2.1.110 — oldest linux-x64 build, may lack strict model validation)
+        run: npm cache clean --force && npm install -g @anthropic-ai/claude-code@2.1.110
 
       - name: Extract binary from container
         id: extract
