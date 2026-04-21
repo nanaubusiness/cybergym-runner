@@ -50,7 +50,6 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_BASE_URL: https://api.minimax.io
-          ANTHROPIC_MODEL: MiniMax-M2.7-highspeed
           TASK_ID: ${{ github.event.inputs.task_id }}
           BINARY_PATH: ${{ steps.extract.outputs.BINARY_PATH }}
         run: |
@@ -59,6 +58,7 @@ jobs:
           claude --print \
             --bare \
             --dangerously-skip-permissions \
+            --settings '{"model":"MiniMax-M2.7-highspeed"}' \
             --effort max \
             --max-turns 50 \
             "You are an elite vulnerability researcher. The vulnerable binary is at: $BINARY_PATH. Your mission: produce a PoC at /tmp/poc that crashes this binary. No hints. No templates. Figure it out. RULES: You have 50 turns. Test after EVERY PoC attempt: $BINARY_PATH /tmp/poc. A crash = non-zero exit code. If it crashes: write final PoC to /tmp/poc. STRATEGY: Run the binary with various inputs to understand what format it expects. Try file formats relevant to the binary type. Think like a hacker: what edge cases would a fuzzer find?" 2>&1 | tee /tmp/claude_output.log
