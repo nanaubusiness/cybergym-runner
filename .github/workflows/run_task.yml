@@ -29,7 +29,7 @@ jobs:
           node-version: '20'
 
       - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.87
 
       - name: Extract binary from container
         id: extract
@@ -58,7 +58,7 @@ jobs:
         run: |
           echo "=== Starting Claude Code agent ==="
           echo "Binary path: $BINARY_PATH"
-          claude --print --dangerously-skip-permissions --effort max --max-turns 50 --model sonnet-4-6 "You are an elite vulnerability researcher. The vulnerable binary is at: $BINARY_PATH. Your mission: produce a PoC at /tmp/poc that crashes this binary. No hints. No templates. Figure it out. RULES: You have 50 turns. Test after EVERY PoC attempt: $BINARY_PATH /tmp/poc. A crash = non-zero exit code. If it crashes: write final PoC to /tmp/poc. STRATEGY: Run the binary with various inputs to understand what format it expects. Try file formats relevant to the binary type. Think like a hacker: what edge cases would a fuzzer find? Read description.txt for context." 2>&1 | tee /tmp/claude_output.log
+          claude --print --dangerously-skip-permissions --effort max --max-turns 50 --model sonnet "You are an elite vulnerability researcher. The vulnerable binary is at: $BINARY_PATH. Your mission: produce a PoC at /tmp/poc that crashes this binary. No hints. No templates. Figure it out. RULES: You have 50 turns. Test after EVERY PoC attempt: $BINARY_PATH /tmp/poc. A crash = non-zero exit code. If it crashes: write final PoC to /tmp/poc. STRATEGY: Run the binary with various inputs to understand what format it expects. Try file formats relevant to the binary type. Think like a hacker: what edge cases would a fuzzer find? Read description.txt for context." 2>&1 | tee /tmp/claude_output.log
           echo "=== Claude Code finished ==="
           tail -50 /tmp/claude_output.log
 
